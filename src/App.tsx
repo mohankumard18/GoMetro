@@ -70,9 +70,13 @@ export function App() {
     }
   }, []);
 
-  const handlePlanJourney = () => {
-    if (!originStationId || !destStationId) return;
-    const plan = routeEngine.findRoute(originStationId, destStationId);
+  const handlePlanJourney = (overrideOrigin?: string, overrideDest?: string) => {
+    const oId = overrideOrigin || originStationId;
+    const dId = overrideDest || destStationId;
+    if (!oId || !dId) return;
+    if (overrideOrigin) setOriginStationId(overrideOrigin);
+    if (overrideDest) setDestStationId(overrideDest);
+    const plan = routeEngine.findRoute(oId, dId);
     setCalculatedRoute(plan);
     setActiveTab('plan');
   };
@@ -93,6 +97,7 @@ export function App() {
     journeyManagerRef.current = manager;
     setActiveJourney(manager.getJourney());
     setActiveTab('journey');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleEndJourney = () => {
@@ -102,6 +107,7 @@ export function App() {
     journeyManagerRef.current = null;
     setActiveJourney(null);
     setActiveTab('plan');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -160,10 +166,18 @@ export function App() {
             stations={cityData.stations}
             onSelectStationAsOrigin={(st) => {
               setOriginStationId(st.station_id);
+              if (destStationId && destStationId !== st.station_id) {
+                const plan = routeEngine.findRoute(st.station_id, destStationId);
+                setCalculatedRoute(plan);
+              }
               setActiveTab('plan');
             }}
             onSelectStationAsDest={(st) => {
               setDestStationId(st.station_id);
+              if (originStationId && originStationId !== st.station_id) {
+                const plan = routeEngine.findRoute(originStationId, st.station_id);
+                setCalculatedRoute(plan);
+              }
               setActiveTab('plan');
             }}
           />

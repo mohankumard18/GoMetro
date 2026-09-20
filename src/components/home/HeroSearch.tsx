@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowUpDown, Search, Compass, MapPin, Sparkles, Navigation, Clock, ShieldCheck, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowUpDown, Compass, MapPin, Sparkles, Navigation, Check } from 'lucide-react';
 import { Station, City, MetroLine } from '../../types/metro';
 import { findNearestStation, getCurrentCoordinates } from '../../services/geolocation';
 
@@ -11,7 +11,7 @@ interface HeroSearchProps {
   destStationId: string;
   setOriginStationId: (id: string) => void;
   setDestStationId: (id: string) => void;
-  onPlanJourney: () => void;
+  onPlanJourney: (originId?: string, destId?: string) => void;
   onOpenAi: () => void;
 }
 
@@ -33,6 +33,23 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
   const [locating, setLocating] = useState(false);
   const [nearestNotice, setNearestNotice] = useState<string | null>(null);
 
+  const originContainerRef = useRef<HTMLDivElement>(null);
+  const destContainerRef = useRef<HTMLDivElement>(null);
+
+  // Outside click listener to cleanly close dropdowns without blocking any other button clicks
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (originContainerRef.current && !originContainerRef.current.contains(e.target as Node)) {
+        setShowOriginDropdown(false);
+      }
+      if (destContainerRef.current && !destContainerRef.current.contains(e.target as Node)) {
+        setShowDestDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
   // Sync query input text when station id changes
   useEffect(() => {
     const orig = stations.find(s => s.station_id === originStationId);
@@ -47,9 +64,9 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
   // Quick suggestions based on city
   const cityQuickRoutes = {
     hyderabad: [
-      { from: 'hyd_ameerpet', to: 'hyd_raidurg', label: 'Ameerpet → Raidurg (Direct)' },
+      { from: 'hyd_ameerpet', to: 'hyd_raidurg', label: 'Ameerpet → Raidurg (Blue Line)' },
       { from: 'hyd_miyapur', to: 'hyd_lb_nagar', label: 'Miyapur → LB Nagar (Red Line)' },
-      { from: 'hyd_nagole', to: 'hyd_hitec_city', label: 'Nagole → Hitec City (Blue Line)' }
+      { from: 'hyd_nagole', to: 'hyd_hitec_city', label: 'Nagole → Hitec City' }
     ],
     bangalore: [
       { from: 'blr_indiranagar', to: 'blr_majestic', label: 'Indiranagar → Majestic' },
@@ -57,28 +74,30 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
       { from: 'blr_yeshwanthpur', to: 'blr_jayanagar', label: 'Yeshwanthpur → Jayanagar' }
     ],
     delhi: [
-      { from: 'del_new_delhi', to: 'del_airport_t3', label: 'New Delhi → IGI Airport T3' },
-      { from: 'del_rajiv_chowk', to: 'del_noida_sec_18', label: 'Rajiv Chowk → Noida Sector 18' },
-      { from: 'del_vishwavidyalaya', to: 'del_millennium_city_centre', label: 'DU North → Millennium City Gurugram' }
+      { from: 'del_new_delhi', to: 'del_airport_t3', label: 'New Delhi → IGI Airport' },
+      { from: 'del_rajiv_chowk', to: 'del_noida_sec_18', label: 'Rajiv Chowk → Noida Sec 18' },
+      { from: 'del_vishwavidyalaya', to: 'del_millennium_city_centre', label: 'DU North → Gurugram' }
     ],
     mumbai: [
       { from: 'mum_versova', to: 'mum_ghatkopar', label: 'Versova → Ghatkopar' },
       { from: 'mum_andheri', to: 'mum_airport_rd', label: 'Andheri → Airport Road' }
     ],
     chennai: [
-      { from: 'chn_central', to: 'chn_airport', label: 'Chennai Central → Airport' },
+      { from: 'chn_central', to: 'chn_airport', label: 'Central → Airport' },
       { from: 'chn_wimco_nagar', to: 'chn_guindy', label: 'Wimco Nagar → Guindy' }
     ],
     kochi: [
-      { from: 'koc_aluva', to: 'koc_edapally', label: 'Aluva → LuLu Mall (Edapally)' },
-      { from: 'koc_mg_road', to: 'koc_vyttila', label: 'MG Road → Vyttila Mobility Hub' }
+      { from: 'koc_aluva', to: 'koc_edapally', label: 'Aluva → LuLu Mall' },
+      { from: 'koc_mg_road', to: 'koc_vyttila', label: 'MG Road → Vyttila Hub' }
     ]
   }[currentCity.city_id] || [];
 
   const handleSwap = () => {
-    const tempId = originStationId;
-    setOriginStationId(destStationId);
-    setDestStationId(tempId);
+    const prevOrigin = originStationId;
+    const prevDest = destStationId;
+    setOriginStationId(prevDest);
+    setDestStationId(prevOrigin);
+    onPlanJourney(prevDest, prevOrigin);
   };
 
   const handleNearestMetro = async () => {
@@ -89,8 +108,6 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
       try {
         coords = await getCurrentCoordinates();
       } catch (err) {
-        // Fallback to city center coordinates with slight offset for realistic demo
-        console.log('Using city center fallback for demo geolocation');
         coords = {
           latitude: currentCity.center_lat + 0.015,
           longitude: currentCity.center_lng + 0.015
@@ -100,14 +117,50 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
       const res = findNearestStation(coords.latitude, coords.longitude, stations);
       if (res) {
         setOriginStationId(res.station.station_id);
-        setNearestNotice(`Nearest station found: ${res.station.station_name} (~${res.distanceKm} km, ${res.walkingMinutes} min walk)`);
+        setOriginQuery(res.station.station_name);
+        setNearestNotice(`Nearest station detected: ${res.station.station_name} (~${res.distanceKm} km, ${res.walkingMinutes} min walk)`);
         setTimeout(() => setNearestNotice(null), 5000);
+        onPlanJourney(res.station.station_id, destStationId);
       }
     } catch (err) {
       console.warn('Geolocation error:', err);
     } finally {
       setLocating(false);
     }
+  };
+
+  const handleSubmitPlan = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setShowOriginDropdown(false);
+    setShowDestDropdown(false);
+
+    let oId = originStationId;
+    let dId = destStationId;
+
+    if (originQuery) {
+      const match = stations.find(s => s.station_name.toLowerCase() === originQuery.trim().toLowerCase()) 
+        || stations.find(s => s.station_name.toLowerCase().includes(originQuery.trim().toLowerCase()));
+      if (match) {
+        oId = match.station_id;
+        setOriginStationId(match.station_id);
+      }
+    }
+    if (destQuery) {
+      const match = stations.find(s => s.station_name.toLowerCase() === destQuery.trim().toLowerCase())
+        || stations.find(s => s.station_name.toLowerCase().includes(destQuery.trim().toLowerCase()));
+      if (match) {
+        dId = match.station_id;
+        setDestStationId(match.station_id);
+      }
+    }
+
+    onPlanJourney(oId, dId);
+
+    // Scroll to results smoothly
+    setTimeout(() => {
+      const elem = document.getElementById('route-results-section');
+      if (elem) elem.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   const filteredOriginStations = stations.filter(s =>
@@ -121,7 +174,7 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
   );
 
   return (
-    <div className="relative overflow-hidden pt-6 pb-12 sm:pt-10 sm:pb-16 bg-gradient-to-b from-blue-50/60 via-slate-50 to-white">
+    <div className="relative overflow-hidden pt-6 pb-10 sm:pt-10 sm:pb-14 bg-gradient-to-b from-blue-50/60 via-slate-50 to-white">
       {/* Decorative ambient gradients */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-tr from-blue-200/20 via-sky-200/30 to-indigo-100/20 blur-3xl pointer-events-none"></div>
 
@@ -129,9 +182,9 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
         
         {/* Hero Title & City Announcement */}
         <div className="text-center space-y-3 mb-8">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 border border-blue-200/80 shadow-sm text-xs font-semibold text-blue-800">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/95 border border-blue-200 shadow-sm text-xs font-semibold text-blue-800">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>{currentCity.city_name} Metro Network Live</span>
+            <span>{currentCity.city_name} Metro Network</span>
             <span className="text-slate-300">•</span>
             <span className="text-slate-600">{stations.length} Stations & {lines.length} Lines</span>
           </div>
@@ -149,24 +202,24 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
         </div>
 
         {/* Route Planner Card */}
-        <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xl shadow-slate-200/60 border border-slate-200/80 transition-all">
+        <form onSubmit={handleSubmitPlan} className="bg-white rounded-3xl p-5 sm:p-7 shadow-xl shadow-slate-200/60 border border-slate-200/80 transition-all">
           <div className="space-y-4">
 
             {/* Input Row: Origin & Destination */}
             <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] gap-3 items-center">
               
               {/* Origin Station */}
-              <div className="relative">
+              <div className="relative" ref={originContainerRef}>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                     From Station / Origin
                   </span>
                   <button
                     type="button"
                     onClick={handleNearestMetro}
                     disabled={locating}
-                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition"
+                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition cursor-pointer"
                   >
                     <Compass className={`w-3 h-3 ${locating ? 'animate-spin' : ''}`} />
                     <span>{locating ? 'Locating...' : 'Nearest Station'}</span>
@@ -183,49 +236,49 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
                     onChange={(e) => {
                       setOriginQuery(e.target.value);
                       setShowOriginDropdown(true);
+                      const exact = stations.find(s => s.station_name.toLowerCase() === e.target.value.toLowerCase());
+                      if (exact) setOriginStationId(exact.station_id);
                     }}
                     onFocus={() => setShowOriginDropdown(true)}
-                    placeholder="Search origin station or landmark..."
+                    placeholder="Search origin station..."
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-2xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition shadow-sm"
                   />
                 </div>
 
                 {/* Autocomplete Dropdown */}
                 {showOriginDropdown && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowOriginDropdown(false)}></div>
-                    <div className="absolute left-0 right-0 mt-2 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-20">
-                      {filteredOriginStations.length === 0 ? (
-                        <div className="p-3 text-xs text-slate-500 text-center">No stations found matching "{originQuery}"</div>
-                      ) : (
-                        filteredOriginStations.map(st => (
-                          <button
-                            key={st.station_id}
-                            onClick={() => {
-                              setOriginStationId(st.station_id);
-                              setOriginQuery(st.station_name);
-                              setShowOriginDropdown(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 rounded-xl text-xs sm:text-sm flex items-center justify-between hover:bg-blue-50 transition ${
-                              st.station_id === originStationId ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700'
-                            }`}
-                          >
-                            <div>
-                              <div className="font-semibold">{st.station_name}</div>
-                              {st.landmarks && (
-                                <div className="text-[11px] text-slate-400 truncate max-w-xs">{st.landmarks[0]}</div>
-                              )}
-                            </div>
-                            {st.interchange && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
-                                Interchange
-                              </span>
+                  <div className="absolute left-0 right-0 mt-2 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-30">
+                    {filteredOriginStations.length === 0 ? (
+                      <div className="p-3 text-xs text-slate-500 text-center">No stations found matching "{originQuery}"</div>
+                    ) : (
+                      filteredOriginStations.map(st => (
+                        <button
+                          key={st.station_id}
+                          type="button"
+                          onClick={() => {
+                            setOriginStationId(st.station_id);
+                            setOriginQuery(st.station_name);
+                            setShowOriginDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs sm:text-sm flex items-center justify-between hover:bg-blue-50 transition cursor-pointer ${
+                            st.station_id === originStationId ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-semibold">{st.station_name}</div>
+                            {st.landmarks && (
+                              <div className="text-[11px] text-slate-400 truncate max-w-xs">{st.landmarks[0]}</div>
                             )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </>
+                          </div>
+                          {st.interchange && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                              Interchange
+                            </span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -234,7 +287,7 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
                 <button
                   type="button"
                   onClick={handleSwap}
-                  className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-blue-50 hover:text-blue-600 border border-slate-200 flex items-center justify-center text-slate-600 transition shadow-sm"
+                  className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-blue-50 hover:text-blue-600 border border-slate-200 flex items-center justify-center text-slate-600 transition shadow-sm active:scale-90 cursor-pointer"
                   title="Swap Origin and Destination"
                 >
                   <ArrowUpDown className="w-4 h-4" />
@@ -242,13 +295,13 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
               </div>
 
               {/* Destination Station */}
-              <div className="relative">
+              <div className="relative" ref={destContainerRef}>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
                     To Station / Destination
                   </span>
-                  <span className="text-[11px] text-slate-400">Where are you going?</span>
+                  <span className="text-[11px] text-slate-400">Target Stop</span>
                 </label>
 
                 <div className="relative">
@@ -261,49 +314,49 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
                     onChange={(e) => {
                       setDestQuery(e.target.value);
                       setShowDestDropdown(true);
+                      const exact = stations.find(s => s.station_name.toLowerCase() === e.target.value.toLowerCase());
+                      if (exact) setDestStationId(exact.station_id);
                     }}
                     onFocus={() => setShowDestDropdown(true)}
-                    placeholder="Search destination station or landmark..."
+                    placeholder="Search destination station..."
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-2xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition shadow-sm"
                   />
                 </div>
 
                 {/* Autocomplete Dropdown */}
                 {showDestDropdown && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowDestDropdown(false)}></div>
-                    <div className="absolute left-0 right-0 mt-2 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-20">
-                      {filteredDestStations.length === 0 ? (
-                        <div className="p-3 text-xs text-slate-500 text-center">No stations found matching "{destQuery}"</div>
-                      ) : (
-                        filteredDestStations.map(st => (
-                          <button
-                            key={st.station_id}
-                            onClick={() => {
-                              setDestStationId(st.station_id);
-                              setDestQuery(st.station_name);
-                              setShowDestDropdown(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 rounded-xl text-xs sm:text-sm flex items-center justify-between hover:bg-blue-50 transition ${
-                              st.station_id === destStationId ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700'
-                            }`}
-                          >
-                            <div>
-                              <div className="font-semibold">{st.station_name}</div>
-                              {st.landmarks && (
-                                <div className="text-[11px] text-slate-400 truncate max-w-xs">{st.landmarks[0]}</div>
-                              )}
-                            </div>
-                            {st.interchange && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
-                                Interchange
-                              </span>
+                  <div className="absolute left-0 right-0 mt-2 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-30">
+                    {filteredDestStations.length === 0 ? (
+                      <div className="p-3 text-xs text-slate-500 text-center">No stations found matching "{destQuery}"</div>
+                    ) : (
+                      filteredDestStations.map(st => (
+                        <button
+                          key={st.station_id}
+                          type="button"
+                          onClick={() => {
+                            setDestStationId(st.station_id);
+                            setDestQuery(st.station_name);
+                            setShowDestDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs sm:text-sm flex items-center justify-between hover:bg-blue-50 transition cursor-pointer ${
+                            st.station_id === destStationId ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-semibold">{st.station_name}</div>
+                            {st.landmarks && (
+                              <div className="text-[11px] text-slate-400 truncate max-w-xs">{st.landmarks[0]}</div>
                             )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </>
+                          </div>
+                          {st.interchange && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                              Interchange
+                            </span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -320,9 +373,8 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
             {/* Main Action Buttons */}
             <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
               <button
-                type="button"
-                onClick={onPlanJourney}
-                className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-700 via-blue-600 to-sky-600 hover:from-blue-800 hover:to-sky-700 text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-500/25 transition flex items-center justify-center gap-2 active:scale-[0.99]"
+                type="submit"
+                className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-700 via-blue-600 to-sky-600 hover:from-blue-800 hover:to-sky-700 text-white font-extrabold text-sm sm:text-base shadow-lg shadow-blue-500/25 transition flex items-center justify-center gap-2 active:scale-98 cursor-pointer"
               >
                 <Navigation className="w-4 h-4" />
                 <span>Plan My Journey</span>
@@ -331,7 +383,7 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
               <button
                 type="button"
                 onClick={onOpenAi}
-                className="w-full sm:w-auto py-3.5 px-5 rounded-2xl bg-blue-50 hover:bg-blue-100/80 border border-blue-200 text-blue-700 font-bold text-sm transition flex items-center justify-center gap-2"
+                className="w-full sm:w-auto py-3.5 px-5 rounded-2xl bg-blue-50 hover:bg-blue-100/80 border border-blue-200 text-blue-700 font-bold text-sm transition flex items-center justify-center gap-2 active:scale-98 cursor-pointer"
               >
                 <Sparkles className="w-4 h-4 text-amber-500" />
                 <span>Ask AI Route</span>
@@ -340,7 +392,7 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
 
             {/* Quick Route Suggestions */}
             {cityQuickRoutes.length > 0 && (
-              <div className="pt-2 border-t border-slate-100">
+              <div className="pt-3 border-t border-slate-100">
                 <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                   Popular Journeys in {currentCity.city_name}:
                 </div>
@@ -352,9 +404,17 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
                       onClick={() => {
                         setOriginStationId(r.from);
                         setDestStationId(r.to);
-                        setTimeout(onPlanJourney, 50);
+                        const orig = stations.find(s => s.station_id === r.from);
+                        const dest = stations.find(s => s.station_id === r.to);
+                        if (orig) setOriginQuery(orig.station_name);
+                        if (dest) setDestQuery(dest.station_name);
+                        onPlanJourney(r.from, r.to);
+                        setTimeout(() => {
+                          const elem = document.getElementById('route-results-section');
+                          if (elem) elem.scrollIntoView({ behavior: 'smooth' });
+                        }, 100);
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 border border-slate-200 text-slate-700 text-xs font-semibold transition"
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 border border-slate-200 text-slate-700 text-xs font-semibold transition active:scale-95 cursor-pointer"
                     >
                       {r.label}
                     </button>
@@ -364,7 +424,7 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
             )}
 
           </div>
-        </div>
+        </form>
 
         {/* Feature Highlights Bar */}
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -35,7 +35,7 @@ export const RouteResults: React.FC<RouteResultsProps> = ({
   const metroSegments = route.segments.filter(s => s.type === 'metro');
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div id="route-results-section" className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       
       {/* Route Header Card */}
       <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xl shadow-slate-200/50 border border-slate-200">
@@ -88,30 +88,32 @@ export const RouteResults: React.FC<RouteResultsProps> = ({
         {/* Action Button Strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
           <button
+            type="button"
             onClick={onStartJourney}
-            className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-700 via-blue-600 to-sky-600 hover:from-blue-800 hover:to-sky-700 text-white font-extrabold text-sm sm:text-base shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition active:scale-[0.99]"
+            className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-700 via-blue-600 to-sky-600 hover:from-blue-800 hover:to-sky-700 text-white font-extrabold text-sm sm:text-base shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer"
           >
             <Navigation className="w-4 h-4" />
             <span>START JOURNEY</span>
           </button>
 
           <button
+            type="button"
             onClick={onOpenTickets}
-            className="py-3.5 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition"
+            className="py-3.5 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer"
           >
             <Ticket className="w-4 h-4 text-emerald-600" />
             <span>Ticket Channels</span>
           </button>
 
           <button
+            type="button"
             onClick={onAskAi}
-            className="py-3.5 px-4 rounded-2xl bg-blue-50 hover:bg-blue-100/80 border border-blue-200 text-blue-700 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition"
+            className="py-3.5 px-4 rounded-2xl bg-blue-50 hover:bg-blue-100/80 border border-blue-200 text-blue-700 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-amber-500" />
             <span>Explain with AI</span>
           </button>
         </div>
-
       </div>
 
       {/* Step-by-Step Transit Itinerary */}
