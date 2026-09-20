@@ -15,11 +15,17 @@ import {
   SkipBack, 
   X,
   Footprints,
-  Train
+  Train,
+  Radio,
+  Satellite,
+  Gauge,
+  Compass,
+  ShieldCheck
 } from 'lucide-react';
 import { ActiveJourney, Station } from '../../types/metro';
 import { JourneyManager } from '../../engine/journeyEngine';
 import { notificationService } from '../../services/notifications';
+import { watchLivePosition, clearLivePositionWatcher, LiveGpsPosition, calculateDistanceKm } from '../../services/geolocation';
 
 interface JourneyModeProps {
   journeyManager: JourneyManager;
@@ -34,6 +40,10 @@ export const JourneyMode: React.FC<JourneyModeProps> = ({
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasRequestedPerms, setHasRequestedPerms] = useState(false);
+  const [controlMode, setControlMode] = useState<'simulator' | 'gps'>('simulator');
+  const [liveGps, setLiveGps] = useState<LiveGpsPosition | null>(null);
+  const [distanceToNextMeters, setDistanceToNextMeters] = useState<number | null>(null);
+  const [gpsWatchId, setGpsWatchId] = useState<number | null>(null);
 
   const route = activeJourney.route;
   const currentIdx = activeJourney.current_station_index;
@@ -42,6 +52,48 @@ export const JourneyMode: React.FC<JourneyModeProps> = ({
   const currentStation = route.all_stations_in_order[currentIdx];
   const nextStation = currentIdx + 1 < totalStops ? route.all_stations_in_order[currentIdx + 1] : null;
   const destStation = route.destination_station;
+
+  // Manage Live GPS tracking on the train
+  useEffect(() => {
+    if (controlMode === 'gps') {
+      if (isPlaying) {
+        setIsPlaying(false);
+        journeyManager.stopAutoPlay();
+      }
+
+      const id = watchLivePosition(
+        (pos) => {
+          setLiveGps(pos);
+          journeyManager.updateGpsPosition(pos.latitude, pos.longitude);
+          if (nextStation) {
+            const distKm = calculateDistanceKm(pos.latitude, pos.longitude, nextStation.latitude, nextStation.longitude);
+            setDistanceToNextMeters(Math.round(distKm * 1000));
+          }
+        },
+        (err) => {
+          console.warn('GPS error in journey mode:', err);
+        }
+      );
+      setGpsWatchId(id);
+
+      return () => {
+        if (id !== null) clearLivePositionWatcher(id);
+      };
+    } else {
+      if (gpsWatchId !== null) {
+        clearLivePositionWatcher(gpsWatchId);
+        setGpsWatchId(null);
+      }
+    }
+  }, [controlMode, isPlaying, nextStation, journeyManager]);
+
+  useEffect(() => {
+    return () => {
+      if (gpsWatchId !== null) {
+        clearLivePositionWatcher(gpsWatchId);
+      }
+    };
+  }, [gpsWatchId]);
 
   // Trigger confetti upon arrival
   useEffect(() => {
@@ -258,51 +310,142 @@ export const JourneyMode: React.FC<JourneyModeProps> = ({
           </div>
         </div>
 
-        {/* Interactive Simulator Controls Toolbar */}
-        <div className="mt-6 pt-5 border-t border-slate-800/80 bg-slate-800/40 -mx-5 -mb-5 sm:-mx-8 sm:-mb-8 p-5 rounded-b-3xl">
-          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center justify-between">
-            <span>Interactive Commuter Simulator (Demonstration)</span>
-            <span className="text-[10px] text-blue-400 font-medium">Test alerts in real-time</span>
-          </div>
-
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
+        {/* Journey Control Toolbar & Mode Switcher */}
+        <div className="mt-6 pt-5 border-t border-slate-800/80 bg-slate-800/40 -mx-5 -mb-5 sm:-mx-8 sm:-mb-8 p-5 rounded-b-3xl space-y-4">
+          
+          {/* Tracking Mode Switcher */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-700">
               <button
-                onClick={handlePrevStop}
-                disabled={currentIdx === 0}
-                className="px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-xs font-semibold text-white flex items-center gap-1.5 transition"
-              >
-                <SkipBack className="w-3.5 h-3.5" />
-                <span>Prev Stop</span>
-              </button>
-
-              <button
-                onClick={handleNextStop}
-                disabled={currentIdx >= totalStops - 1}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1.5 transition shadow-sm"
-              >
-                <span>Next Station</span>
-                <SkipForward className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={handleToggleAutoPlay}
-                className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                  isPlaying ? 'bg-amber-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                type="button"
+                onClick={() => setControlMode('gps')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  controlMode === 'gps'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                <span>{isPlaying ? 'Pause Auto-Trip' : 'Auto-Play Trip'}</span>
+                <Satellite className="w-3.5 h-3.5" />
+                <span>🛰️ Live Train GPS</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setControlMode('simulator')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  controlMode === 'simulator'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Play className="w-3.5 h-3.5" />
+                <span>🎮 Simulator Mode</span>
               </button>
             </div>
 
             <button
+              type="button"
               onClick={onEndJourney}
-              className="px-3 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 text-xs font-semibold transition"
+              className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 text-xs font-semibold transition cursor-pointer"
             >
               Exit Journey Mode
             </button>
           </div>
+
+          {/* MODE 1: LIVE TRAIN GPS TELEMETRY HUD */}
+          {controlMode === 'gps' && (
+            <div className="p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/40 space-y-3 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-2 font-bold text-emerald-400 uppercase tracking-wider text-[11px]">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  Real-Time Train GPS Tracking Active
+                </span>
+                <span className="font-mono text-slate-400 text-[11px]">
+                  Precision: ±{liveGps?.accuracyMeters || 8}m
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
+                  <div className="text-[10px] text-slate-400 uppercase font-bold">Speed (Train)</div>
+                  <div className="text-base font-extrabold text-white mt-0.5 font-mono">
+                    {liveGps?.speedKmH ? `${liveGps.speedKmH} km/h` : 'In Transit (~35 km/h)'}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
+                  <div className="text-[10px] text-slate-400 uppercase font-bold">Current Platform</div>
+                  <div className="text-base font-extrabold text-emerald-400 mt-0.5 truncate">
+                    {currentStation.station_name}
+                  </div>
+                </div>
+
+                <div className="col-span-2 sm:col-span-1 p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
+                  <div className="text-[10px] text-slate-400 uppercase font-bold">Next Station Approach</div>
+                  <div className="text-base font-extrabold text-sky-400 mt-0.5 truncate">
+                    {nextStation ? nextStation.station_name : 'Destination'}
+                  </div>
+                  {distanceToNextMeters !== null && (
+                    <div className="text-[10px] text-slate-400">~{distanceToNextMeters}m distance</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-400 bg-slate-800/40 p-2.5 rounded-xl border border-slate-800 flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <p>
+                  GoMetro is continuously polling your phone's satellite GPS in the background. The exact instant your train enters <strong>2 stations away from {destStation.station_name}</strong>, your phone alarm chime will ring and the lockscreen alert will fire automatically!
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* MODE 2: INTERACTIVE COMMUTER SIMULATOR CONTROLS */}
+          {controlMode === 'simulator' && (
+            <div className="space-y-2 animate-in fade-in duration-200">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span>Interactive Commuter Simulator (Demonstration)</span>
+                <span className="text-[10px] text-blue-400 font-medium">Test alerts in real-time</span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handlePrevStop}
+                  disabled={currentIdx === 0}
+                  className="px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-xs font-semibold text-white flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <SkipBack className="w-3.5 h-3.5" />
+                  <span>Prev Stop</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleNextStop}
+                  disabled={currentIdx >= totalStops - 1}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                >
+                  <span>Next Station</span>
+                  <SkipForward className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleToggleAutoPlay}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                    isPlaying ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                  }`}
+                >
+                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                  <span>{isPlaying ? 'Pause Auto-Trip' : 'Auto-Play Trip'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
 
       </div>

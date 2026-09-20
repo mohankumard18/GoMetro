@@ -1,5 +1,6 @@
 import { RoutePlan, ActiveJourney, JourneyAlert, JourneyStatus, Station } from '../types/metro';
 import { notificationService } from '../services/notifications';
+import { calculateDistanceKm } from '../services/geolocation';
 
 export class JourneyManager {
   private journey: ActiveJourney;
@@ -217,6 +218,29 @@ export class JourneyManager {
 
   public isAutoPlaying(): boolean {
     return this.autoPlayTimer !== null;
+  }
+
+  // Live GPS matching: detects when the commuter enters the vicinity of an upcoming station
+  public updateGpsPosition(userLat: number, userLng: number): { matchedStation: Station; distanceMeters: number } | null {
+    const stations = this.journey.route.all_stations_in_order;
+    const currentIdx = this.journey.current_station_index;
+    
+    // Look ahead from current station to end of route
+    for (let i = currentIdx; i < stations.length; i++) {
+      const st = stations[i];
+      const distKm = calculateDistanceKm(userLat, userLng, st.latitude, st.longitude);
+      const distMeters = Math.round(distKm * 1000);
+      
+      // Proximity threshold: within 450 meters of station entrance/platform
+      if (distMeters <= 450) {
+        if (i > currentIdx) {
+          this.moveToIndex(i);
+        }
+        return { matchedStation: st, distanceMeters: distMeters };
+      }
+    }
+    
+    return null;
   }
 
   private notifyUpdate() {

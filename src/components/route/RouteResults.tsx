@@ -12,7 +12,9 @@ import {
   Bell, 
   Info,
   Footprints,
-  TrainTrack
+  TrainTrack,
+  ExternalLink,
+  Compass
 } from 'lucide-react';
 
 interface RouteResultsProps {
@@ -141,15 +143,37 @@ export const RouteResults: React.FC<RouteResultsProps> = ({
               return (
                 <div key={idx} className="relative">
                   <div className="absolute -left-6 sm:-left-8 top-0.5 w-5 h-5 rounded-full bg-emerald-500 border-4 border-white shadow-sm flex items-center justify-center"></div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
-                        <Footprints className="w-3 h-3" />
-                        Walk to Origin
-                      </span>
-                      <span className="text-xs text-slate-400">~{segment.duration_minutes} mins</span>
+                  <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200/80 space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                          <Footprints className="w-3.5 h-3.5 text-emerald-600" />
+                          Walk to Origin Station
+                        </span>
+                        <span className="text-xs font-extrabold text-emerald-900 bg-white px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
+                          ~{segment.duration_minutes} min walk ({segment.distance_meters || 400}m)
+                        </span>
+                      </div>
+
+                      {segment.google_maps_url && (
+                        <a
+                          href={segment.google_maps_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1 rounded-xl bg-white hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-300 flex items-center gap-1.5 shadow-xs transition"
+                        >
+                          <Footprints className="w-3 h-3 text-emerald-600" />
+                          <span>Open Google Maps Walk</span>
+                          <ExternalLink className="w-3 h-3 text-slate-400" />
+                        </a>
+                      )}
                     </div>
-                    <p className="text-sm font-semibold text-slate-800 mt-1">{segment.instructions}</p>
+                    
+                    <p className="text-xs font-medium text-slate-700">{segment.instructions}</p>
+                    
+                    <div className="text-[10px] text-slate-500 font-mono bg-white/80 px-2.5 py-1 rounded-lg border border-emerald-100 flex items-center gap-1.5">
+                      <span>ℹ️ Pedestrian Transit Formula: {segment.distance_meters || 400}m ÷ 80m/min (4.8 km/h pace) = ~{segment.duration_minutes} min</span>
+                    </div>
                   </div>
                 </div>
               );

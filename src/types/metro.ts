@@ -77,6 +77,10 @@ export interface RouteSegment {
   duration_minutes: number;
   instructions: string;
   target_direction?: string; // e.g., "Towards Raidurg"
+  distance_meters?: number;
+  walking_speed_kmh?: number;
+  google_maps_url?: string;
+  user_gps_coords?: { latitude: number; longitude: number; accuracy?: number };
 }
 
 export interface RoutePlan {

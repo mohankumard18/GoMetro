@@ -12,6 +12,7 @@ import { City, RoutePlan, ActiveJourney } from './types/metro';
 import { RouteEngine } from './engine/routeEngine';
 import { JourneyManager } from './engine/journeyEngine';
 import { GoMetroAIAssistant } from './engine/aiAssistant';
+import { LiveGpsPosition } from './services/geolocation';
 
 export function App() {
   // 1. Current City State (Default: Hyderabad)
@@ -21,9 +22,10 @@ export function App() {
   // 2. Route Engine
   const routeEngine = useMemo(() => new RouteEngine(cityData), [cityData]);
 
-  // 3. Station selections
+  // 3. Station selections & Live GPS
   const [originStationId, setOriginStationId] = useState<string>('hyd_ameerpet');
   const [destStationId, setDestStationId] = useState<string>('hyd_raidurg');
+  const [userGpsPosition, setUserGpsPosition] = useState<LiveGpsPosition | null>(null);
 
   // 4. Current calculated route
   const [calculatedRoute, setCalculatedRoute] = useState<RoutePlan | null>(null);
@@ -70,13 +72,19 @@ export function App() {
     }
   }, []);
 
-  const handlePlanJourney = (overrideOrigin?: string, overrideDest?: string) => {
+  const handlePlanJourney = (
+    overrideOrigin?: string,
+    overrideDest?: string,
+    overrideGps?: { latitude: number; longitude: number; accuracy?: number }
+  ) => {
     const oId = overrideOrigin || originStationId;
     const dId = overrideDest || destStationId;
+    const gps = overrideGps !== undefined ? overrideGps : (userGpsPosition || undefined);
     if (!oId || !dId) return;
     if (overrideOrigin) setOriginStationId(overrideOrigin);
     if (overrideDest) setDestStationId(overrideDest);
-    const plan = routeEngine.findRoute(oId, dId);
+    if (overrideGps) setUserGpsPosition(overrideGps as LiveGpsPosition);
+    const plan = routeEngine.findRoute(oId, dId, gps);
     setCalculatedRoute(plan);
     setActiveTab('plan');
   };

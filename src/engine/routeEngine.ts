@@ -1,5 +1,6 @@
 import { Station, MetroLine, Interchange, RoutePlan, RouteSegment } from '../types/metro';
 import { CityMetroData } from '../data';
+import { calculateDistanceKm, getWalkingDirectionsUrl } from '../services/geolocation';
 
 interface GraphEdge {
   toStationId: string;
@@ -69,7 +70,11 @@ export class RouteEngine {
     }
   }
 
-  public findRoute(originStationId: string, destStationId: string): RoutePlan | null {
+  public findRoute(
+    originStationId: string,
+    destStationId: string,
+    userGpsCoords?: { latitude: number; longitude: number; accuracy?: number }
+  ): RoutePlan | null {
     if (originStationId === destStationId) {
       const station = this.stationMap.get(originStationId);
       if (!station) return null;
@@ -151,25 +156,52 @@ export class RouteEngine {
 
     if (!bestSolution) return null;
 
-    return this.constructRoutePlan(originStation, destStation, bestSolution);
+    return this.constructRoutePlan(originStation, destStation, bestSolution, userGpsCoords);
   }
 
   private constructRoutePlan(
     originStation: Station,
     destStation: Station,
-    solution: DijkstraNode
+    solution: DijkstraNode,
+    userGpsCoords?: { latitude: number; longitude: number; accuracy?: number }
   ): RoutePlan {
     const allStationsInOrder: Station[] = [];
     const segments: RouteSegment[] = [];
 
     // First segment: Walk to origin station
-    const walkToOriginMins = 5;
+    let walkToOriginMins = 5;
+    let walkDistanceMeters = 400;
+    let googleMapsUrl = getWalkingDirectionsUrl(
+      userGpsCoords ? userGpsCoords.latitude : originStation.latitude - 0.003,
+      userGpsCoords ? userGpsCoords.longitude : originStation.longitude - 0.003,
+      originStation.latitude,
+      originStation.longitude
+    );
+    let instructions = `Walk ~5 min (~400m at standard 4.8 km/h pedestrian pace) to ${originStation.station_name} Metro Station entrance. Follow signs to security and ticketing.`;
+
+    if (userGpsCoords) {
+      const distKm = calculateDistanceKm(userGpsCoords.latitude, userGpsCoords.longitude, originStation.latitude, originStation.longitude);
+      const distM = Math.round(distKm * 1000);
+      googleMapsUrl = getWalkingDirectionsUrl(userGpsCoords.latitude, userGpsCoords.longitude, originStation.latitude, originStation.longitude);
+
+      if (distM < 8000) {
+        walkDistanceMeters = distM;
+        // 1.2x urban street grid factor, 80m/min pace (4.8 km/h standard)
+        walkToOriginMins = Math.max(1, Math.round((distM * 1.2) / 80));
+        instructions = `Walk ${distM}m (~${walkToOriginMins} min at standard 4.8 km/h pace) from your live GPS location to ${originStation.station_name} Metro Station entrance.`;
+      }
+    }
+
     segments.push({
       type: 'walk_origin',
       from_station: originStation,
       to_station: originStation,
       duration_minutes: walkToOriginMins,
-      instructions: `Walk ~5 min to ${originStation.station_name} Metro Station entrance. Follow signs to security and ticketing.`
+      distance_meters: walkDistanceMeters,
+      walking_speed_kmh: 4.8,
+      google_maps_url: googleMapsUrl,
+      user_gps_coords: userGpsCoords,
+      instructions
     });
 
     // Group path into contiguous line segments
